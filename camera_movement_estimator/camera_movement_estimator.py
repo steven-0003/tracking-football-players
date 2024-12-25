@@ -39,13 +39,13 @@ class CameraMovementEstimator:
                     position_adjusted = (position[0]-camera_movement[0], position[1]-camera_movement[1])
                     tracks[object][frame_num][track_id]['position_adjusted'] = position_adjusted
 
-    def get_camera_movement(self, frames, num_frames, read=False, path=None):
+    def get_camera_movement(self, frames, read=False, path=None):
         if read and path is not None and os.path.exists(path):
             with open(path,'rb') as f:
                 camera_movement = pickle.load(f)
             return camera_movement
 
-        camera_movement = [[0,0]] * num_frames
+        camera_movement = []
         grayscale = cv2.cvtColor(self.first_frame,cv2.COLOR_BGR2GRAY)
         features = cv2.goodFeaturesToTrack(grayscale, **self.features)
 
@@ -68,8 +68,10 @@ class CameraMovementEstimator:
                     camera_movement_y = new_feature_point[1] - old_feature_point[1]
 
             if max_distance > self.min_distance:
-                camera_movement[frame_num] = [camera_movement_x, camera_movement_y]
+                camera_movement.append([camera_movement_x, camera_movement_y])
                 features = cv2.goodFeaturesToTrack(frame_gray,**self.features)
+            else:
+                camera_movement.append([0,0])
 
             grayscale = frame_gray.copy()
 

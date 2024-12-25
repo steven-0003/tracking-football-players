@@ -10,11 +10,15 @@ import sys
 sys.path.append('../')
 
 from utils import get_bbox_center, get_bbox_width, get_foot_position
+from team_assigner import TeamAssigner
+from player_ball_assigner import PlayerBallAssigner
 
 class Tracker:
     def __init__(self, path) -> None:
         self.model = YOLO(path)
         self.tracker = sv.ByteTrack()
+        self.team_assigner = TeamAssigner()
+        self.player_assigner = PlayerBallAssigner()
 
     def add_position_to_tracks(self, tracks):
         for object, object_tracks in tracks.items():
@@ -39,13 +43,12 @@ class Tracker:
 
         return ball_positions
 
-    def get_object_tracks(self, frames, read=False, path=None) -> dict:
+    def get_object_tracks(self, frames, read=False, path=None) -> tuple:
         if read and path is not None and os.path.exists(path):
             with open(path,'rb') as f:
-                tracks = pickle.load(f)
-            return tracks
-
-        detections = self.detect_frames(frames)
+                tracks, team_possession = pickle.load(f)
+            
+            return tracks, team_possession
 
         tracks = {
             "players": [],
@@ -53,7 +56,11 @@ class Tracker:
             "ball": []
         }
 
-        for frame_num, detection in enumerate(detections):
+        team_possession = []
+
+        for frame_num, frame in enumerate(frames):
+            detection = self.model(frame, conf=0.1)
+
             cls_names = detection[0].names
             cls_names_inv = {v:k for k,v in cls_names.items()}
 
@@ -89,11 +96,34 @@ class Tracker:
                 if cls_id == cls_names_inv["Ball"]:
                     tracks["ball"][frame_num][1] = {"bbox": bbox}
 
+            # Interpolate ball positions 
+            tracks["ball"] = self.interpolate_ball_positions(tracks['ball'])
+            
+            # Team classification
+            if frame_num == 0:
+                self.team_assigner.assign_team_colour(frame, tracks["players"][0])
+            
+            for player_id, track in tracks["players"][frame_num].items():
+                team = self.team_assigner.get_player_team(frame, track['bbox'], player_id)
+                tracks['players'][frame_num][player_id]['team'] = team
+                tracks['players'][frame_num][player_id]['team_colour'] = self.team_assigner.team_colours[team]
+
+            # Assign ball to player
+            ball_bbox = tracks['ball'][frame_num][1]['bbox']
+            assigned_player = self.player_assigner.assign_ball_to_player(tracks["players"][frame_num], ball_bbox)
+            if assigned_player != -1:
+                tracks['players'][frame_num][assigned_player]['has_ball'] = True
+                team_possession.append(tracks['players'][frame_num][assigned_player]['team'])
+            elif len(team_possession)>0:
+                team_possession.append(team_possession[-1])
+
+        team_possession = np.array(team_possession)
+
         if path is not None:
             with open(path,'wb') as f:
-                pickle.dump(tracks, f)
+                pickle.dump((tracks, team_possession), f)
         
-        return tracks
+        return tracks, team_possession
 
     def detect_frames(self, frames):
         for frame in frames:
