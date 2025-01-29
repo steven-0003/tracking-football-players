@@ -3,6 +3,7 @@ import supervision as sv
 import numpy as np
 import pickle
 import os
+from tqdm import tqdm
 
 from sports.annotators.soccer import draw_pitch, draw_points_on_pitch
 from sports.configs.soccer import SoccerPitchConfiguration
@@ -51,8 +52,6 @@ class KeypointDetector:
         return keypoints
 
     def draw_keypoints(self, frames, keypoints):
-        output_frames = []
-
         edge_annotator = sv.EdgeAnnotator(
             color=sv.Color.from_hex('#00BFFF'),
             thickness=2, edges=self.CONFIG.edges)
@@ -76,10 +75,8 @@ class KeypointDetector:
             annotated_frame = vertex_annotator.annotate(
                 scene=annotated_frame,
                 key_points=frame_reference_key_points)
-            
-            output_frames.append(annotated_frame)
 
-        return output_frames
+            yield annotated_frame
     
     def get_xy(self, tracks):
         player1_xy = {}
@@ -119,18 +116,27 @@ class KeypointDetector:
 
         return player1_xy, player2_xy, referee_xy, ball_xy
     
-    def draw_2d_pitch(self, frames, player1_xy, player2_xy, referee_xy, ball_xy):
-        for frame_num, frame in enumerate(frames):
-            result = self.model(frame, conf=0.3)[0]
+    def remove_ball_outliers(self, ball_xy: dict, distance_threshold: int):
+        last_position = None
+        for frame_num, position in ball_xy.items():
+            if last_position is None:
+                last_position = position
+            else:
+                distance = np.linalg.norm(position-last_position)
+                print(distance)
+                if distance > distance_threshold:
+                    ball_xy[frame_num] = np.array([])
+                last_position = position
+    
+    def draw_2d_pitch(self, frames, num_frames, player1_xy, player2_xy, referee_xy, ball_xy):
+        for frame_num, frame in enumerate(tqdm(frames, desc="Running Pitch Detection Model", total=num_frames)):
+            result = self.model(frame, verbose=False)[0]
             key_points = sv.KeyPoints.from_ultralytics(result)
     
-            filter = key_points.confidence[0] > 0.5
-            frame_reference_points = key_points.xy[0][filter]
-            pitch_reference_points = np.array(self.CONFIG.vertices)[filter]
-
+            mask = (key_points.xy[0][:, 0] > 1) & (key_points.xy[0][:, 1] > 1)
             transformer = ViewTransformer(
-                source=frame_reference_points,
-                target=pitch_reference_points
+                source=key_points.xy[0][mask].astype(np.float32),
+                target=np.array(self.CONFIG.vertices)[mask].astype(np.float32)
             )
 
             pitch_ball_xy = transformer.transform_points(points=ball_xy.get(frame_num, np.array([])))

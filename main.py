@@ -1,5 +1,5 @@
 from utils import read_video, save_video
-from trackers import Tracker
+from trackers import Tracker, BallTracker
 from team_assigner import TeamAssigner
 from player_ball_assigner import PlayerBallAssigner
 from camera_movement_estimator import CameraMovementEstimator
@@ -16,13 +16,25 @@ import supervision as sv
 def main():
     video_name = "08fd33_4"
     video_path = f'input_videos/{video_name}.mp4'
+
+    video_info = sv.VideoInfo.from_video_path(video_path)
+    num_frames = video_info.total_frames
+    w, h = video_info.resolution_wh
+
     frames = sv.get_video_frames_generator(video_path)
     first_frame = next(frames)
     frames = sv.get_video_frames_generator(video_path)
 
     # Initialise tracker
     tracker = Tracker('models/best.pt')
-    tracks, team_possession = tracker.get_object_tracks(frames, read=True, path=f'stubs/track_stubs_{video_name}.pkl')
+    tracks = tracker.get_object_tracks(frames, num_frames, read=True, path=f'stubs/track_stubs_{video_name}.pkl')
+
+    # frames = sv.get_video_frames_generator(video_path)
+    # ball_tracker = BallTracker('models/ball/best.pt')
+    # ball_tracker.get_ball_tracks(frames, num_frames, tracks)
+
+    player_assigner = PlayerBallAssigner()
+    team_possession = player_assigner.get_team_possession(num_frames, tracks)
 
     # Initialise keypoints
     keypoint_detector = KeypointDetector('models/keypoints/best.pt')
@@ -39,6 +51,7 @@ def main():
     camera_movement_estimator.adjust_positions_to_tracks(tracks, camera_movement_per_frame)
     
     # View transformer
+    # TODO: Replace this with transformed points from homography
     view_transformer = ViewTransformer()
     view_transformer.add_transformed_position_to_tracks(tracks)
 
@@ -50,7 +63,8 @@ def main():
 
     # Draw keypoints
     player1_xy, player2_xy, referee_xy, ball_xy = keypoint_detector.get_xy(tracks)
-    pitch_frames = keypoint_detector.draw_2d_pitch(frames, player1_xy, player2_xy, referee_xy, ball_xy)
+    keypoint_detector.remove_ball_outliers(ball_xy, 100)
+    pitch_frames = keypoint_detector.draw_2d_pitch(frames, num_frames, player1_xy, player2_xy, referee_xy, ball_xy)
 
     # Draw output
     frames = sv.get_video_frames_generator(video_path)
