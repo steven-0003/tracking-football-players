@@ -5,6 +5,8 @@ import pandas as pd
 import cv2
 import pickle
 import os
+from tqdm import tqdm
+from sklearn.ensemble import IsolationForest
 
 import sys
 sys.path.append('../')
@@ -16,9 +18,10 @@ from player_ball_assigner import PlayerBallAssigner
 class Tracker:
     def __init__(self, path) -> None:
         self.model = YOLO(path)
-        self.tracker = sv.ByteTrack()
+        self.tracker = sv.ByteTrack(lost_track_buffer=1000, track_activation_threshold=0.5, frame_rate=24)
         self.team_assigner = TeamAssigner()
         self.player_assigner = PlayerBallAssigner()
+        self.anomaly_model = IsolationForest(n_estimators=100, max_samples='auto', contamination='auto')
 
     def add_position_to_tracks(self, tracks):
         for object, object_tracks in tracks.items():
@@ -43,12 +46,12 @@ class Tracker:
 
         return ball_positions
 
-    def get_object_tracks(self, frames, read=False, path=None) -> tuple:
+    def get_object_tracks(self, frames, num_frames, read=False, path=None) -> dict:
         if read and path is not None and os.path.exists(path):
             with open(path,'rb') as f:
-                tracks, team_possession = pickle.load(f)
+                tracks = pickle.load(f)
             
-            return tracks, team_possession
+            return tracks
 
         tracks = {
             "players": [],
@@ -56,10 +59,8 @@ class Tracker:
             "ball": []
         }
 
-        team_possession = []
-
-        for frame_num, frame in enumerate(frames):
-            detection = self.model(frame, conf=0.1)
+        for frame_num, frame in enumerate(tqdm(frames, desc="Running Player Detection Model", total=num_frames)):
+            detection = self.model(frame, conf=0.1, verbose=False)
 
             cls_names = detection[0].names
             cls_names_inv = {v:k for k,v in cls_names.items()}
@@ -79,7 +80,7 @@ class Tracker:
             tracks["ball"].append({})
 
             for frame_detection in detections_with_tracks:
-                bbox = frame_detection[0].tolist()
+                bbox = frame_detection[0]
                 cls_id = frame_detection[3]
                 track_id = frame_detection[4]
 
@@ -90,14 +91,30 @@ class Tracker:
                     tracks["referees"][frame_num][track_id] = {"bbox": bbox}
 
             for frame_detection in detection_supervision:
-                bbox = frame_detection[0].tolist()
+                bbox = frame_detection[0]
                 cls_id = frame_detection[3]
 
                 if cls_id == cls_names_inv["Ball"]:
-                    tracks["ball"][frame_num][1] = {"bbox": bbox}
+                    if tracks["ball"][frame_num]:
+                        if frame_num >=100:
+                            past_positions = tracks["ball"][frame_num-100:frame_num]
+                        else:
+                            past_positions = tracks['ball'][0:frame_num]
+                        ball_positions = [x.get(1,{}).get('bbox',[]) for x in past_positions]
+                        ball_positions_df = pd.DataFrame(ball_positions,columns=['x1','y1','x2','y2'])
+                        ball_positions_df.dropna(inplace=True)
+                        X = ball_positions_df[['x1','y1','x2','y2']].values
+                        weights = np.arange(0.1, 1, 0.9/len(X))
+                        self.anomaly_model.fit(X, sample_weight=weights)
+                        old_bbox = tracks['ball'][frame_num][1]['bbox']
+                        old_score = self.anomaly_model.decision_function(old_bbox.reshape(1,-1))
+                        new_score = self.anomaly_model.decision_function(bbox.reshape(1,-1))
 
-            # Interpolate ball positions 
-            tracks["ball"] = self.interpolate_ball_positions(tracks['ball'])
+                        if new_score > old_score:
+                            tracks["ball"][frame_num][1]['bbox'] = bbox
+
+                    else: 
+                        tracks["ball"][frame_num][1] = {"bbox": bbox}
             
             # Team classification
             if frame_num == 0:
@@ -108,22 +125,14 @@ class Tracker:
                 tracks['players'][frame_num][player_id]['team'] = team
                 tracks['players'][frame_num][player_id]['team_colour'] = self.team_assigner.team_colours[team]
 
-            # Assign ball to player
-            ball_bbox = tracks['ball'][frame_num][1]['bbox']
-            assigned_player = self.player_assigner.assign_ball_to_player(tracks["players"][frame_num], ball_bbox)
-            if assigned_player != -1:
-                tracks['players'][frame_num][assigned_player]['has_ball'] = True
-                team_possession.append(tracks['players'][frame_num][assigned_player]['team'])
-            elif len(team_possession)>0:
-                team_possession.append(team_possession[-1])
-
-        team_possession = np.array(team_possession)
+        # Interpolate ball positions
+        tracks["ball"] = self.interpolate_ball_positions(tracks["ball"])
 
         if path is not None:
             with open(path,'wb') as f:
-                pickle.dump((tracks, team_possession), f)
+                pickle.dump(tracks, f)
         
-        return tracks, team_possession
+        return tracks
 
     def detect_frames(self, frames):
         for frame in frames:

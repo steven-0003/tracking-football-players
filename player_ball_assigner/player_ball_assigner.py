@@ -1,4 +1,6 @@
+import numpy as np
 import sys
+
 sys.path.append('../')
 from utils import get_bbox_center, measure_distance
 
@@ -24,3 +26,17 @@ class PlayerBallAssigner:
                 assigned_player = player_id
         
         return assigned_player
+    
+    def get_team_possession(self, num_frames, tracks):
+        team_possession = []
+
+        for frame_num in range(num_frames):
+            ball_bbox = tracks['ball'][frame_num][1]['bbox']
+            assigned_player = self.assign_ball_to_player(tracks["players"][frame_num], ball_bbox)
+            if assigned_player != -1:
+                tracks['players'][frame_num][assigned_player]['has_ball'] = True
+                team_possession.append(tracks['players'][frame_num][assigned_player]['team'])
+            elif len(team_possession)>0:
+                team_possession.append(team_possession[-1])
+
+        return np.array(team_possession)
