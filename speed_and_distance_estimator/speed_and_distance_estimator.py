@@ -26,9 +26,9 @@ class SpeedAndDistanceEstimator:
                     start_position = object_tracks[frame_num][track_id]['position_transformed']
                     end_position = object_tracks[last_frame][track_id]['position_transformed']
 
-                    if start_position is None or end_position is None:
+                    if start_position.size==0 or end_position.size==0:
                         continue
-
+                    
                     distance_covered = measure_distance(start_position,end_position)/100
                     time_elapsed = (last_frame-frame_num)/self.frame_rate
                     speed_ms = distance_covered/time_elapsed
