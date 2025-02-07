@@ -14,9 +14,9 @@ def read_video(path: str):
     
     return frames
 
-def save_video(path: str, frames, first_frame) -> None:
+def save_video(path: str, frames, w, h) -> None:
     f = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter(path, f, 24, (first_frame.shape[1], first_frame.shape[0]))
+    out = cv2.VideoWriter(path, f, 24, (w, h))
     for frame in frames:
         out.write(frame)
     out.release()

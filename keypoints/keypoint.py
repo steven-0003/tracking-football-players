@@ -123,7 +123,6 @@ class KeypointDetector:
                 last_position = position
             else:
                 distance = np.linalg.norm(position-last_position)
-                print(distance)
                 if distance > distance_threshold:
                     ball_xy[frame_num] = np.array([])
                 last_position = position
@@ -179,3 +178,49 @@ class KeypointDetector:
                                 pitch=annotated_frame)
             
             yield annotated_frame
+
+    def draw_2d_pitch2(self, tracks, num_frames):
+        for frame_num in range(num_frames):
+            annotated_frame = draw_pitch(self.CONFIG)
+
+            for player_track in tracks['players'][frame_num].values():
+                if player_track['team']==0:
+                    annotated_frame = draw_points_on_pitch(
+                        config=self.CONFIG,
+                        xy=player_track['position_transformed'].reshape(1,-1),
+                        face_color=sv.Color.from_hex('00BFFF'),
+                        edge_color=sv.Color.BLACK,
+                        radius=16,
+                        pitch=annotated_frame
+                    )
+
+                if player_track['team']==1:
+                    annotated_frame = draw_points_on_pitch(
+                        config=self.CONFIG,
+                        xy=player_track['position_transformed'].reshape(1,-1),
+                        face_color=sv.Color.from_hex('FF1493'),
+                        edge_color=sv.Color.BLACK,
+                        radius=16,
+                        pitch=annotated_frame
+                    )
+            for referee_track in tracks['referees'][frame_num].values():
+                annotated_frame = draw_points_on_pitch(
+                    config=self.CONFIG,
+                    xy=referee_track['position_transformed'].reshape(1,-1),
+                    face_color=sv.Color.from_hex('FFD700'),
+                    edge_color=sv.Color.BLACK,
+                    radius=16,
+                    pitch=annotated_frame
+                )
+
+            annotated_frame = draw_points_on_pitch(
+                config=self.CONFIG,
+                xy=np.array(tracks["ball"][frame_num][1]['position_transformed']).reshape(1,-1),
+                face_color=sv.Color.WHITE,
+                edge_color=sv.Color.BLACK,
+                radius=10,
+                pitch=annotated_frame
+            )
+
+            yield annotated_frame
+            
