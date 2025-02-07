@@ -29,7 +29,7 @@ class SpeedAndDistanceEstimator:
                     if start_position is None or end_position is None:
                         continue
 
-                    distance_covered = measure_distance(start_position,end_position)
+                    distance_covered = measure_distance(start_position,end_position)/100
                     time_elapsed = (last_frame-frame_num)/self.frame_rate
                     speed_ms = distance_covered/time_elapsed
                     speed_kmph = speed_ms * 3.6
