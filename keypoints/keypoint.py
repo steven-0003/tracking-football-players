@@ -185,42 +185,46 @@ class KeypointDetector:
 
             for player_track in tracks['players'][frame_num].values():
                 if player_track['team']==0:
-                    annotated_frame = draw_points_on_pitch(
-                        config=self.CONFIG,
-                        xy=player_track['position_transformed'].reshape(1,-1),
-                        face_color=sv.Color.from_hex('00BFFF'),
-                        edge_color=sv.Color.BLACK,
-                        radius=16,
-                        pitch=annotated_frame
-                    )
+                    if player_track['position_transformed'].size>0:
+                        annotated_frame = draw_points_on_pitch(
+                            config=self.CONFIG,
+                            xy=player_track['position_transformed'].reshape(1,-1),
+                            face_color=sv.Color.from_hex('00BFFF'),
+                            edge_color=sv.Color.BLACK,
+                            radius=16,
+                            pitch=annotated_frame
+                        )
 
                 if player_track['team']==1:
+                    if player_track['position_transformed'].size>0:
+                        annotated_frame = draw_points_on_pitch(
+                            config=self.CONFIG,
+                            xy=player_track['position_transformed'].reshape(1,-1),
+                            face_color=sv.Color.from_hex('FF1493'),
+                            edge_color=sv.Color.BLACK,
+                            radius=16,
+                            pitch=annotated_frame
+                    )
+            for referee_track in tracks['referees'][frame_num].values():
+                if referee_track['position_transformed'].size>0:
                     annotated_frame = draw_points_on_pitch(
                         config=self.CONFIG,
-                        xy=player_track['position_transformed'].reshape(1,-1),
-                        face_color=sv.Color.from_hex('FF1493'),
+                        xy=referee_track['position_transformed'].reshape(1,-1),
+                        face_color=sv.Color.from_hex('FFD700'),
                         edge_color=sv.Color.BLACK,
                         radius=16,
                         pitch=annotated_frame
                     )
-            for referee_track in tracks['referees'][frame_num].values():
+            ball_pos = tracks["ball"][frame_num][1]['position_transformed']
+            if len(ball_pos)>0:
                 annotated_frame = draw_points_on_pitch(
                     config=self.CONFIG,
-                    xy=referee_track['position_transformed'].reshape(1,-1),
-                    face_color=sv.Color.from_hex('FFD700'),
+                    xy=np.array(ball_pos).reshape(1,-1),
+                    face_color=sv.Color.WHITE,
                     edge_color=sv.Color.BLACK,
-                    radius=16,
+                    radius=10,
                     pitch=annotated_frame
                 )
-
-            annotated_frame = draw_points_on_pitch(
-                config=self.CONFIG,
-                xy=np.array(tracks["ball"][frame_num][1]['position_transformed']).reshape(1,-1),
-                face_color=sv.Color.WHITE,
-                edge_color=sv.Color.BLACK,
-                radius=10,
-                pitch=annotated_frame
-            )
 
             yield annotated_frame
             
