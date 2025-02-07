@@ -15,10 +15,15 @@ from utils import get_bbox_center, get_bbox_width, get_foot_position
 from team_assigner import TeamAssigner
 from player_ball_assigner import PlayerBallAssigner
 
+from sports.common.view import ViewTransformer
+from sports.configs.soccer import SoccerPitchConfiguration
+
 class Tracker:
-    def __init__(self, path) -> None:
+    def __init__(self, path, keypoint_path, fps) -> None:
         self.model = YOLO(path)
-        self.tracker = sv.ByteTrack(lost_track_buffer=1000, track_activation_threshold=0.5, frame_rate=24)
+        self.keypoints = YOLO(keypoint_path)
+        self.CONFIG = SoccerPitchConfiguration()
+        self.tracker = sv.ByteTrack(lost_track_buffer=1000, track_activation_threshold=0.5, frame_rate=fps)
         self.team_assigner = TeamAssigner()
         self.player_assigner = PlayerBallAssigner()
         self.anomaly_model = IsolationForest(n_estimators=100, max_samples='auto', contamination='auto')
@@ -34,15 +39,25 @@ class Tracker:
                         position = get_foot_position(bbox)
                     tracks[object][frame_num][track_id]['position'] = position
 
-    def interpolate_ball_positions(self, ball_positions):
-        ball_positions = [x.get(1,{}).get('bbox',[]) for x in ball_positions]
+    def interpolate_ball_positions(self, positions):
+        ball_positions = [x.get(1,{}).get('bbox',[]) for x in positions]
         ball_positions_df = pd.DataFrame(ball_positions,columns=['x1','y1','x2','y2'])
+
+        transformed_positions = [x.get(1,{}).get('position_transformed',[]) for x in positions]
+        transformed_positions_df = pd.DataFrame(transformed_positions,columns=['x','y'])
 
         # Interpolate missing values
         ball_positions_df = ball_positions_df.interpolate()
         ball_positions_df = ball_positions_df.bfill()
 
+        transformed_positions_df = transformed_positions_df.interpolate()
+        transformed_positions_df = transformed_positions_df.bfill()
+
         ball_positions = [{1: {"bbox": x}} for x in ball_positions_df.to_numpy().tolist()]
+
+        transformed_list = transformed_positions_df.to_numpy().tolist()
+        for i in range(len(ball_positions)):
+            ball_positions[i][1]["position_transformed"] = transformed_list[i]
 
         return ball_positions
 
@@ -59,8 +74,22 @@ class Tracker:
             "ball": []
         }
 
-        for frame_num, frame in enumerate(tqdm(frames, desc="Running Player Detection Model", total=num_frames)):
+        # source_target_keypoints = []
+        last_position = None
+        
+        for frame_num, frame in enumerate(tqdm(frames, desc="Running KeyPoint & Player Detection Model", total=num_frames)):
             detection = self.model(frame, conf=0.1, verbose=False)
+            keypoint_detection = self.keypoints(frame, verbose=False)[0]
+            key_points = sv.KeyPoints.from_ultralytics(keypoint_detection)
+            mask = (key_points.xy[0][:, 0] > 1) & (key_points.xy[0][:, 1] > 1)
+            source = key_points.xy[0][mask].astype(np.float32)
+            target = np.array(self.CONFIG.vertices)[mask].astype(np.float32)
+            transformer = ViewTransformer(
+                source=source,
+                target=target
+            )
+
+            # source_target_keypoints.append((source, target))
 
             cls_names = detection[0].names
             cls_names_inv = {v:k for k,v in cls_names.items()}
@@ -86,35 +115,51 @@ class Tracker:
 
                 if cls_id == cls_names_inv["Player"]:
                     tracks["players"][frame_num][track_id] = {"bbox": bbox}
+                    position = get_foot_position(bbox)
+                    transformed = transformer.transform_points(np.array([position]))
+                    
+                    tracks["players"][frame_num][track_id]["position_transformed"] = transformed[0]
 
                 if cls_id == cls_names_inv["Referee"]:
                     tracks["referees"][frame_num][track_id] = {"bbox": bbox}
+                    position = get_foot_position(bbox)
+                    transformed = transformer.transform_points(np.array([position]))
+                    
+                    tracks["referees"][frame_num][track_id]["position_transformed"] = transformed[0]
 
             for frame_detection in detection_supervision:
                 bbox = frame_detection[0]
                 cls_id = frame_detection[3]
 
                 if cls_id == cls_names_inv["Ball"]:
-                    if tracks["ball"][frame_num]:
-                        if frame_num >=100:
-                            past_positions = tracks["ball"][frame_num-100:frame_num]
-                        else:
-                            past_positions = tracks['ball'][0:frame_num]
-                        ball_positions = [x.get(1,{}).get('bbox',[]) for x in past_positions]
-                        ball_positions_df = pd.DataFrame(ball_positions,columns=['x1','y1','x2','y2'])
-                        ball_positions_df.dropna(inplace=True)
-                        X = ball_positions_df[['x1','y1','x2','y2']].values
-                        weights = np.arange(0.1, 1, 0.9/len(X))
-                        self.anomaly_model.fit(X, sample_weight=weights)
-                        old_bbox = tracks['ball'][frame_num][1]['bbox']
-                        old_score = self.anomaly_model.decision_function(old_bbox.reshape(1,-1))
-                        new_score = self.anomaly_model.decision_function(bbox.reshape(1,-1))
+                    position = get_bbox_center(bbox)
+                    transformed = transformer.transform_points(np.array([position]))
 
-                        if new_score > old_score:
-                            tracks["ball"][frame_num][1]['bbox'] = bbox
+                    tracks["ball"][frame_num][1] = {"bbox": bbox,
+                                                    "position_transformed": transformed[0]}
 
-                    else: 
-                        tracks["ball"][frame_num][1] = {"bbox": bbox}
+                    # if tracks["ball"][frame_num]:
+                    #     if frame_num >=100:
+                    #         past_positions = tracks["ball"][frame_num-100:frame_num]
+                    #     else:
+                    #         past_positions = tracks['ball'][0:frame_num]
+                    #     ball_positions = [x.get(1,{}).get('bbox',[]) for x in past_positions]
+                    #     ball_positions_df = pd.DataFrame(ball_positions,columns=['x1','y1','x2','y2'])
+                    #     ball_positions_df.dropna(inplace=True)
+                    #     X = ball_positions_df[['x1','y1','x2','y2']].values
+                    #     weights = np.arange(0.1, 1, 0.9/len(X))
+                    #     self.anomaly_model.fit(X, sample_weight=weights)
+                    #     old_bbox = tracks['ball'][frame_num][1]['bbox']
+                    #     old_score = self.anomaly_model.decision_function(old_bbox.reshape(1,-1))
+                    #     new_score = self.anomaly_model.decision_function(bbox.reshape(1,-1))
+
+                    #     if new_score > old_score:
+                    #         tracks["ball"][frame_num][1]['bbox'] = bbox
+                    #         tracks["ball"][frame_num][1]['position_transformed'] = transformed[0]
+
+                    # else: 
+                    #     tracks["ball"][frame_num][1] = {"bbox": bbox,
+                    #                                     "position_transformed": transformed[0]}
             
             # Team classification
             if frame_num == 0:
@@ -126,6 +171,20 @@ class Tracker:
                 tracks['players'][frame_num][player_id]['team_colour'] = self.team_assigner.team_colours[team]
 
         # Interpolate ball positions
+        tracks["ball"] = self.interpolate_ball_positions(tracks["ball"])
+
+        last_position = None
+        for f, ball_track in enumerate(tracks["ball"]):
+            position = get_bbox_center(ball_track[1].get("bbox", []))
+
+            if last_position is None:
+                last_position = np.array(position)
+            else:
+                distance = np.linalg.norm(np.array(position) - last_position)
+                if distance > 100:
+                    tracks["ball"][f][1] = {}
+                last_position = position
+
         tracks["ball"] = self.interpolate_ball_positions(tracks["ball"])
 
         if path is not None:
