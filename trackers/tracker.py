@@ -84,10 +84,13 @@ class Tracker:
             mask = (key_points.xy[0][:, 0] > 1) & (key_points.xy[0][:, 1] > 1)
             source = key_points.xy[0][mask].astype(np.float32)
             target = np.array(self.CONFIG.vertices)[mask].astype(np.float32)
-            transformer = ViewTransformer(
-                source=source,
-                target=target
-            )
+            transform = False
+            if source.shape[0] >= 4:
+                transform = True
+                transformer = ViewTransformer(
+                    source=source,
+                    target=target
+                )
 
             # source_target_keypoints.append((source, target))
 
@@ -115,28 +118,37 @@ class Tracker:
 
                 if cls_id == cls_names_inv["Player"]:
                     tracks["players"][frame_num][track_id] = {"bbox": bbox}
-                    position = get_foot_position(bbox)
-                    transformed = transformer.transform_points(np.array([position]))
-                    
-                    tracks["players"][frame_num][track_id]["position_transformed"] = transformed[0]
+
+                    if transform:
+                        position = get_foot_position(bbox)
+                        transformed = transformer.transform_points(np.array([position]))
+                        tracks["players"][frame_num][track_id]["position_transformed"] = transformed[0]
+                    else:
+                        tracks["players"][frame_num][track_id]["position_transformed"] = np.array([])
 
                 if cls_id == cls_names_inv["Referee"]:
                     tracks["referees"][frame_num][track_id] = {"bbox": bbox}
-                    position = get_foot_position(bbox)
-                    transformed = transformer.transform_points(np.array([position]))
                     
-                    tracks["referees"][frame_num][track_id]["position_transformed"] = transformed[0]
+                    if transform:
+                        position = get_foot_position(bbox)
+                        transformed = transformer.transform_points(np.array([position]))
+                        tracks["referees"][frame_num][track_id]["position_transformed"] = transformed[0]
+                    else:
+                        tracks["referees"][frame_num][track_id]["position_transformed"] = np.array([])
 
             for frame_detection in detection_supervision:
                 bbox = frame_detection[0]
                 cls_id = frame_detection[3]
 
                 if cls_id == cls_names_inv["Ball"]:
-                    position = get_bbox_center(bbox)
-                    transformed = transformer.transform_points(np.array([position]))
+                    tracks["ball"][frame_num][1] = {"bbox": bbox}
 
-                    tracks["ball"][frame_num][1] = {"bbox": bbox,
-                                                    "position_transformed": transformed[0]}
+                    if transform:
+                        position = get_bbox_center(bbox)
+                        transformed = transformer.transform_points(np.array([position]))
+                        tracks["ball"][frame_num][1]["position_transformed"] = transformed[0]
+                    else:
+                        tracks["ball"][frame_num][1]["position_transformed"] = np.array([])
 
                     # if tracks["ball"][frame_num]:
                     #     if frame_num >=100:
@@ -230,7 +242,7 @@ class Tracker:
     def draw_team_possession(self, frame, frame_num, team_possession):
         overlay = frame.copy()
 
-        cv2.rectangle(overlay, (1350,850), (1900,970), (255,255,255), cv2.FILLED)
+        cv2.rectangle(overlay, (900,600), (1250,700), (255,255,255), cv2.FILLED)
         alpha = 0.4
         cv2.addWeighted(overlay, alpha, frame, 1-alpha, 0, frame)
 
@@ -241,8 +253,8 @@ class Tracker:
         team_1 = team_1_num_frames/(team_1_num_frames+team_2_num_frames)
         team_2 = team_2_num_frames/(team_1_num_frames+team_2_num_frames)
 
-        cv2.putText(frame, f"Team 1 Possession: {team_1*100:.2f}%", (1400,900), cv2.FONT_HERSHEY_SIMPLEX, 1, 0, 3)
-        cv2.putText(frame, f"Team 2 Possession: {team_2*100:.2f}%", (1400,950), cv2.FONT_HERSHEY_SIMPLEX, 1, 0, 3)
+        cv2.putText(frame, f"Team 1 Possession: {team_1*100:.2f}%", (910,620), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 0, 2)
+        cv2.putText(frame, f"Team 2 Possession: {team_2*100:.2f}%", (910,660), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 0, 2)
 
         return frame
         
