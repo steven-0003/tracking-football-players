@@ -14,7 +14,7 @@ import cv2
 import supervision as sv
 
 def main():
-    video_name = "LevBor-1stHalf"
+    video_name = "08fd33_4"
     video_path = f'input_videos/{video_name}.mp4'
 
     video_info = sv.VideoInfo.from_video_path(video_path)
@@ -32,8 +32,8 @@ def main():
     team_possession = player_assigner.get_team_possession(num_frames, tracks)
 
     # Speed and distance estimator
-    # speed_and_distance_estimator = SpeedAndDistanceEstimator()
-    # speed_and_distance_estimator.add_speed_and_distance_to_tracks(tracks)
+    speed_and_distance_estimator = SpeedAndDistanceEstimator()
+    speed_and_distance_estimator.add_speed_and_distance_to_tracks(tracks)
 
     frames = sv.get_video_frames_generator(video_path)
 
@@ -43,15 +43,12 @@ def main():
     
     # Draw output
     frames = sv.get_video_frames_generator(video_path)
-    output_frames = tracker.draw_annotations(frames, tracks, team_possession)
+    output_frames = tracker.draw_annotations(frames, tracks, team_possession, pitch_frames)
 
     # Draw speed and distance
-    # output_frames = speed_and_distance_estimator.draw_speed_and_distance(output_frames, tracks)
-
-    pitch_frame = draw_pitch(keypoint_detector.CONFIG)
+    output_frames = speed_and_distance_estimator.draw_speed_and_distance(output_frames, tracks)
 
     save_video(f'output_videos/{video_name}_output.avi', output_frames, w, h, num_frames)
-    save_video(f'output_videos/{video_name}_pitch.avi', pitch_frames, pitch_frame.shape[1], pitch_frame.shape[0], num_frames)
 
 if __name__ == "__main__":
     main()

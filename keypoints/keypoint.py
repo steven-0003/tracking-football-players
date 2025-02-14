@@ -3,6 +3,7 @@ import supervision as sv
 import numpy as np
 import pickle
 import os
+import cv2
 from tqdm import tqdm
 
 from sports.annotators.soccer import draw_pitch, draw_points_on_pitch
@@ -225,6 +226,6 @@ class KeypointDetector:
                     radius=10,
                     pitch=annotated_frame
                 )
-
-            yield annotated_frame
+            final = cv2.resize(annotated_frame,(390,240),interpolation=cv2.INTER_LINEAR)
+            yield final
             
