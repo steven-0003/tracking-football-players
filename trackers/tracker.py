@@ -6,12 +6,11 @@ import cv2
 import pickle
 import os
 from tqdm import tqdm
-from sklearn.ensemble import IsolationForest
 
 import sys
 sys.path.append('../')
 
-from utils import get_bbox_center, get_bbox_width, get_foot_position
+from utils import get_bbox_center, get_bbox_width, get_foot_position, remove_short_tracks, player_tracks_by_frames, player_tracks_by_ids
 from team_assigner import TeamAssigner
 from player_ball_assigner import PlayerBallAssigner
 
@@ -26,7 +25,6 @@ class Tracker:
         self.tracker = sv.ByteTrack(lost_track_buffer=1000, track_activation_threshold=0.5, frame_rate=fps)
         self.team_assigner = TeamAssigner()
         self.player_assigner = PlayerBallAssigner()
-        self.anomaly_model = IsolationForest(n_estimators=100, max_samples='auto', contamination='auto')
 
     def add_position_to_tracks(self, tracks):
         for object, object_tracks in tracks.items():
@@ -92,8 +90,6 @@ class Tracker:
                     target=target
                 )
 
-            # source_target_keypoints.append((source, target))
-
             cls_names = detection[0].names
             cls_names_inv = {v:k for k,v in cls_names.items()}
 
@@ -105,13 +101,15 @@ class Tracker:
                     detection_supervision.class_id[object_ind] = cls_names_inv["Player"]
 
             # Tracking
-            detections_with_tracks = self.tracker.update_with_detections(detection_supervision)
+            detection_with_tracks = self.tracker.update_with_detections(detection_supervision)
+            detections_with_classes = np.concatenate((detection_supervision.xyxy, detection_supervision.class_id.reshape(-1,1)), axis=1)
+            detections_with_classes = np.round(detections_with_classes,2)
 
             tracks["players"].append({})
             tracks["referees"].append({})
             tracks["ball"].append({})
-
-            for frame_detection in detections_with_tracks:
+            
+            for frame_detection in detection_with_tracks:
                 bbox = frame_detection[0]
                 cls_id = frame_detection[3]
                 track_id = frame_detection[4]
@@ -136,16 +134,6 @@ class Tracker:
                     else:
                         tracks["referees"][frame_num][track_id]["position_transformed"] = np.array([])
 
-                # if cls_id == cls_names_inv["Ball"]:
-                #     tracks["ball"][frame_num][track_id] = {"bbox":bbox}
-
-                #     if transform:
-                #         position = get_bbox_center(bbox)
-                #         transformed = transformer.transform_points(np.array([position]))
-                #         tracks["ball"][frame_num][track_id]["position_transformed"] = transformed[0]
-                #     else:
-                #         tracks["ball"][frame_num][track_id]["position_transformed"] = np.array([])
-
             for frame_detection in detection_supervision:
                 bbox = frame_detection[0]
                 cls_id = frame_detection[3]
@@ -159,29 +147,6 @@ class Tracker:
                         tracks["ball"][frame_num][1]["position_transformed"] = transformed[0]
                     else:
                         tracks["ball"][frame_num][1]["position_transformed"] = np.array([])
-
-                    # if tracks["ball"][frame_num]:
-                    #     if frame_num >=100:
-                    #         past_positions = tracks["ball"][frame_num-100:frame_num]
-                    #     else:
-                    #         past_positions = tracks['ball'][0:frame_num]
-                    #     ball_positions = [x.get(1,{}).get('bbox',[]) for x in past_positions]
-                    #     ball_positions_df = pd.DataFrame(ball_positions,columns=['x1','y1','x2','y2'])
-                    #     ball_positions_df.dropna(inplace=True)
-                    #     X = ball_positions_df[['x1','y1','x2','y2']].values
-                    #     weights = np.arange(0.1, 1, 0.9/len(X))
-                    #     self.anomaly_model.fit(X, sample_weight=weights)
-                    #     old_bbox = tracks['ball'][frame_num][1]['bbox']
-                    #     old_score = self.anomaly_model.decision_function(old_bbox.reshape(1,-1))
-                    #     new_score = self.anomaly_model.decision_function(bbox.reshape(1,-1))
-
-                    #     if new_score > old_score:
-                    #         tracks["ball"][frame_num][1]['bbox'] = bbox
-                    #         tracks["ball"][frame_num][1]['position_transformed'] = transformed[0]
-
-                    # else: 
-                    #     tracks["ball"][frame_num][1] = {"bbox": bbox,
-                    #                                     "position_transformed": transformed[0]}
             
             # Team classification
             if frame_num == 0:
@@ -208,6 +173,11 @@ class Tracker:
                 last_position = position
 
         tracks["ball"] = self.interpolate_ball_positions(tracks["ball"])
+
+        # Remove short tracks
+        player_tracks = player_tracks_by_ids(tracks)
+        player_tracks = remove_short_tracks(player_tracks, 20)
+        tracks["players"] = player_tracks_by_frames(player_tracks)
 
         if path is not None:
             with open(path,'wb') as f:
