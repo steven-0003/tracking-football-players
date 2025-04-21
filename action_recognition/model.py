@@ -87,7 +87,7 @@ def pred_to_label(pred):
     """Convert prediction to label"""
     pred = torch.argmax(pred, dim=1).cpu().numpy()
 
-    classes = ['pass', 'dribble', 'diving', 'throw']
+    classes = ['short pass', 'dribble', 'diving', 'throw']
     id2label = {i: label for i, label in enumerate(classes)}
 
     return id2label[pred[0]]

@@ -27,6 +27,23 @@ py -3.11 -m venv .venv
 pip install -r requirements.txt
 ```
 
+Navigate to the root folder and extract the [model zip](https://livemanchesterac-my.sharepoint.com/:u:/g/personal/steven_moussa_student_manchester_ac_uk/EVapoG_iv3hIgerOc0eCNEcB0v4tB3k_FSd8jj0BfM6slA?e=njVZb3).
+
+The directory should be as follows
+
+```
+root
+|
+|___models
+    |   best.pt
+    |___action
+    |       best.pt
+    |___keypoints
+            best.pt
+    main.py
+...
+```
+
 *Optional*
 
 If you have a CUDA capable machine, you can install torch with CUDA for faster inference. 
@@ -34,6 +51,7 @@ More information on installing torch can be found on the [pytorch page](https://
 
 ```console
 pip uninstall torch torchvision
+
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 ```
 
@@ -45,7 +63,9 @@ python main.py
 ```
 
 - Select your video from the UI
-- To run analysis and generate heatmaps, click *Run Analysis*
-- To classify a video into an action, click *Run Action Recognition*
+- To run analysis and generate heatmaps, click *Run Analysis* <br> 
+The following [demo video](https://livemanchesterac-my.sharepoint.com/:v:/g/personal/steven_moussa_student_manchester_ac_uk/EZrn88sAWiNJhCXDqiWXuOUBp4NbyaUu4dqm4ptlKnU1uA?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=qNnqoe) is provided to run analysis on. Note that for generating heatmaps, it is advisable to run on longer videos.
+- To classify a video into an action, click *Run Action Recognition* <br>
+The following [demo video](https://livemanchesterac-my.sharepoint.com/:v:/g/personal/steven_moussa_student_manchester_ac_uk/EfmzYFp02P1NuVQRe41GMLABeUM80WkoS3qJmGGwKIBKbA?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=an3UcO) is provided for action recognition. Note that the video clip must already be cut to where the action begins and ends. A simple action recognition model is used classifying a clip into 4 actions: short pass, dribble, diving, throw
 
-- Your output will be saved in *output_videos*
+- Your video output and generated heatmaps will be saved in *output/video_name*
