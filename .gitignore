@@ -164,6 +164,7 @@ cython_debug/
 training
 input_videos
 output_videos
+output
 stubs
 runs
 *.pt
