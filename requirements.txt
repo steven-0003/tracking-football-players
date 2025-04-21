@@ -3,3 +3,4 @@ roboflow==1.1.45
 supervision==0.23.0
 scikit-learn==1.5.2
 fvcore==0.1.5.post20221221
+git+https://github.com/roboflow/sports.git

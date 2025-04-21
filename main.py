@@ -26,6 +26,8 @@ def main(filename):
     video_path = filename
     video_name = Path(video_path).stem
 
+    Path('stubs').mkdir(parents=True, exist_ok=True)
+
     video_info = sv.VideoInfo.from_video_path(video_path)
     num_frames = video_info.total_frames
     w, h = video_info.resolution_wh
@@ -40,10 +42,6 @@ def main(filename):
     player_assigner = PlayerBallAssigner()
     team_possession = player_assigner.get_team_possession(num_frames, tracks)
 
-    # Speed and distance estimator
-    # speed_and_distance_estimator = SpeedAndDistanceEstimator()
-    # speed_and_distance_estimator.add_speed_and_distance_to_tracks(tracks)
-
     frames = sv.get_video_frames_generator(video_path)
 
     # Draw keypoints
@@ -53,9 +51,6 @@ def main(filename):
     # Draw output
     frames = sv.get_video_frames_generator(video_path)
     output_frames = tracker.draw_annotations(frames, tracks, team_possession, pitch_frames)
-
-    # Draw speed and distance
-    # output_frames = speed_and_distance_estimator.draw_speed_and_distance(output_frames, tracks)
 
     Path(f'output/{video_name}').mkdir(parents=True, exist_ok=True)
     save_video(f'output/{video_name}/output.avi', output_frames, w, h, num_frames)
