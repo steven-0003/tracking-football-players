@@ -2,6 +2,8 @@
 
 A repository for tracking football players
 
+Builds on this [existing repository](https://github.com/abdullahtarek/football_analysis)
+
 - Player, Referee & Ball Detection + Tracking
 - Team possession
 - 2D Top Down View
