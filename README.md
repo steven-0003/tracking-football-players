@@ -1,4 +1,4 @@
-# tracking-football-players
+# Tracking Football Players
 
 A repository for tracking football players
 
