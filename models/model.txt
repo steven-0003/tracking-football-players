@@ -1,1 +1,0 @@
-yolov11x model trained with our new dataset

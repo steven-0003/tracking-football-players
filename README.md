@@ -3,8 +3,8 @@
 A repository for tracking football players
 
 - Player, Referee & Ball Detection + Tracking
-- Statistics: Possession, Speed + Distance Covered
-- 2D Homography
+- Team possession
+- 2D Top Down View
 - Heatmaps
 - Action Recognition
 
@@ -27,14 +27,25 @@ py -3.11 -m venv .venv
 pip install -r requirements.txt
 ```
 
+*Optional*
+
+If you have a CUDA capable machine, you can install torch with CUDA for faster inference. 
+More information on installing torch can be found on the [pytorch page](https://pytorch.org/get-started/locally/)
+
+```console
+pip uninstall torch torchvision
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+```
+
 ## Usage
 
-- Create a folder in the root directory called *input_videos* and place your video here
-- Replace the *video_name* in *main.py* with the name of your video
-
-- To get the ouput, run the following command
+- Run the following command
 ```console
 python main.py
 ```
+
+- Select your video from the UI
+- To run analysis and generate heatmaps, click *Run Analysis*
+- To classify a video into an action, click *Run Action Recognition*
 
 - Your output will be saved in *output_videos*
