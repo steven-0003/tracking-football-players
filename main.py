@@ -1,10 +1,6 @@
-from utils import read_video, save_video
-from trackers import Tracker, BallTracker
-from team_assigner import TeamAssigner
+from utils import save_video
+from trackers import Tracker
 from player_ball_assigner import PlayerBallAssigner
-from camera_movement_estimator import CameraMovementEstimator
-from view_transformer import ViewTransformer
-from speed_and_distance_estimator import SpeedAndDistanceEstimator
 from keypoints import KeypointDetector
 from action_recognition import load_model, get_video_frames, pred_to_label
 from heatmaps import generate_heatmaps
@@ -66,7 +62,7 @@ def main(filename):
 
     generate_heatmaps(video_name, tracks)
 
-    showinfo(title="Complete", message=f"Analysis complete. Output saved to output/{video_name}/output.avi")
+    showinfo(title="Complete", message=f"Analysis complete. Video output and heatmaps saved to output/{video_name}")
 
 def action_recognition(filename):
     if not filename:
