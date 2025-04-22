@@ -2,13 +2,14 @@ from utils import save_video
 from trackers import Tracker
 from player_ball_assigner import PlayerBallAssigner
 from keypoints import KeypointDetector
-from action_recognition import load_model, get_video_frames, pred_to_label
+from action_recognition import load_model, get_video_frames, pred_to_label, VideoClassifier
 from heatmaps import generate_heatmaps
 
 import numpy as np
 from pathlib import Path
 import os
 import supervision as sv
+import torch
 
 import tkinter as tk
 from tkinter.messagebox import showinfo
@@ -46,7 +47,7 @@ def main(filename):
 
     # Draw keypoints
     keypoint_detector = KeypointDetector('models/keypoints/best.pt')
-    pitch_frames = keypoint_detector.draw_2d_pitch2(tracks, num_frames)
+    pitch_frames = keypoint_detector.draw_2d_pitch(tracks, num_frames)
     
     # Draw output
     frames = sv.get_video_frames_generator(video_path)
@@ -69,9 +70,11 @@ def action_recognition(filename):
         return
 
     model = load_model('models/action/best.pt')
-    slowfast_frames  = get_video_frames(filename)
-    predicted = model(slowfast_frames)
-    action = pred_to_label(predicted)
+    with torch.no_grad():
+        model.eval()
+        slowfast_frames  = get_video_frames(filename)
+        predicted = model(slowfast_frames)
+        action = pred_to_label(predicted)
     showinfo(title="Action Recognition", message=f"Predicted action: {action}")
 
 

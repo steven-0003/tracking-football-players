@@ -1,11 +1,18 @@
 from sklearn.cluster import KMeans
+import numpy as np
 
 class TeamAssigner:
     def __init__(self) -> None:
         self.team_colours = {}
         self.player_team = {}
 
-    def assign_team_colour(self, frame, player_detections):
+    def assign_team_colour(self, frame: np.ndarray, player_detections: dict) -> None:
+        """Gets the two team colours from the player detections using KMeans clustering.
+
+        Args:
+            frame (np.ndarray): Frame to get the player colours from.
+            player_detections (dict): Player detections with bounding boxes.
+        """
         player_colours = []
 
         for _,detection in player_detections.items():
@@ -21,7 +28,16 @@ class TeamAssigner:
         self.team_colours[0] = kmeans.cluster_centers_[0]
         self.team_colours[1] = kmeans.cluster_centers_[1]
 
-    def get_player_colour(self, frame, bbox):
+    def get_player_colour(self, frame: np.ndarray, bbox: list) -> np.ndarray:
+        """Gets the player colour from the frame using KMeans clustering.
+
+        Args:
+            frame (np.ndarray): Frame to get the player colour from.
+            bbox (list): Bounding box of the player.
+
+        Returns:
+            np.ndarray: The colour of the player.
+        """
         img = frame[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])]
 
         # Take the top half of the image
@@ -41,7 +57,15 @@ class TeamAssigner:
 
         return kmeans.cluster_centers_[player_cluster]
 
-    def get_clustering_model(self, img):
+    def get_clustering_model(self, img: np.ndarray) -> KMeans:
+        """Gets the clustering model for the image using KMeans clustering.
+
+        Args:
+            img (np.ndarray): Image to fit the clustering model to.
+
+        Returns:
+            KMeans: The fitted KMeans model.
+        """
         img_2d = img.reshape(-1,3)
 
         kmeans = KMeans(n_clusters=2, init="k-means++", n_init=1)
@@ -49,7 +73,17 @@ class TeamAssigner:
 
         return kmeans
     
-    def get_player_team(self, frame, bbox, player_id):
+    def get_player_team(self, frame: np.ndarray, bbox: list, player_id: int) -> int:
+        """Gets the player team from the frame using KMeans clustering.
+
+        Args:
+            frame (np.ndarray): Frame to get the player team from.
+            bbox (list): Bounding box of the player.
+            player_id (int): The ID of the player.
+
+        Returns:
+            int: The team ID of the player.
+        """
         if player_id in self.player_team:
             return self.player_team[player_id]
         

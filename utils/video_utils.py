@@ -1,8 +1,8 @@
 import cv2
 from tqdm import tqdm
-import supervision as sv
 
-def read_video(path: str):
+def read_video(path: str) -> list[cv2.Mat]:
+    """Reads a video file and returns its frames as a list of numpy arrays."""
     capture = cv2.VideoCapture(path)
     frames = []
 
@@ -15,6 +15,7 @@ def read_video(path: str):
     return frames
 
 def save_video(path: str, frames, w, h, num_frames) -> None:
+    """Saves a list of frames as a video file."""
     f = cv2.VideoWriter_fourcc(*'XVID')
     out = cv2.VideoWriter(path, f, 24, (w, h))
     for frame in tqdm(frames,desc=f"Saving video in {path}", total=num_frames):

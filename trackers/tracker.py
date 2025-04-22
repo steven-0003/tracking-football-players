@@ -6,6 +6,7 @@ import cv2
 import pickle
 import os
 from tqdm import tqdm
+from typing import Generator
 
 import sys
 sys.path.append('../')
@@ -18,7 +19,7 @@ from sports.common.view import ViewTransformer
 from sports.configs.soccer import SoccerPitchConfiguration
 
 class Tracker:
-    def __init__(self, path, keypoint_path, fps) -> None:
+    def __init__(self, path: str, keypoint_path: str, fps: int) -> None:
         self.model = YOLO(path)
         self.keypoints = YOLO(keypoint_path)
         self.CONFIG = SoccerPitchConfiguration()
@@ -26,7 +27,13 @@ class Tracker:
         self.team_assigner = TeamAssigner()
         self.player_assigner = PlayerBallAssigner()
 
-    def add_position_to_tracks(self, tracks):
+    def add_position_to_tracks(self, tracks: dict):
+        """Add (x,y) position to each track in the tracks dictionary.
+        The position is calculated based on the bounding box of the track.
+
+        Args:
+            tracks (dict): player, referee, ball tracks
+        """
         for object, object_tracks in tracks.items():
             for frame_num, track in enumerate(object_tracks):
                 for track_id, track_info in track.items():
@@ -37,7 +44,15 @@ class Tracker:
                         position = get_foot_position(bbox)
                     tracks[object][frame_num][track_id]['position'] = position
 
-    def interpolate_ball_positions(self, positions):
+    def interpolate_ball_positions(self, positions: list) -> list:
+        """Interpolate ball positions to fill in missing values.
+
+        Args:
+            positions (list): list of ball positions
+
+        Returns:
+            list: interpolated ball positions
+        """
         ball_positions = [x.get(1,{}).get('bbox',[]) for x in positions]
         ball_positions_df = pd.DataFrame(ball_positions,columns=['x1','y1','x2','y2'])
 
@@ -59,7 +74,19 @@ class Tracker:
 
         return ball_positions
 
-    def get_object_tracks(self, frames, num_frames, read=False, path=None) -> dict:
+    def get_object_tracks(self, frames: Generator[np.ndarray, None, None], num_frames: int, read:bool=False, path:str=None) -> dict:
+        """Get object tracks from video frames.
+        This function uses the YOLO model to detect players, referees and ball in each frame, as well as keypoints for 2D pitch view.
+
+        Args:
+            frames (Generator[np.ndarray]): video frames
+            num_frames (int): total number of frames
+            read (bool, optional): Whether to read from stored pickle containing tracks. Defaults to False.
+            path (str, optional): Path of stored pickle. Defaults to None.
+
+        Returns:
+            dict: _description_
+        """
         if read and path is not None and os.path.exists(path):
             with open(path,'rb') as f:
                 tracks = pickle.load(f)
@@ -72,17 +99,23 @@ class Tracker:
             "ball": []
         }
 
-        # source_target_keypoints = []
         last_position = None
         
         for frame_num, frame in enumerate(tqdm(frames, desc="Running KeyPoint & Player Detection Model", total=num_frames)):
+            # Run player detection and keypoint detection models
             detection = self.model(frame, conf=0.1, verbose=False)
             keypoint_detection = self.keypoints(frame, verbose=False)[0]
             key_points = sv.KeyPoints.from_ultralytics(keypoint_detection)
-            mask = (key_points.xy[0][:, 0] > 1) & (key_points.xy[0][:, 1] > 1)
-            source = key_points.xy[0][mask].astype(np.float32)
-            target = np.array(self.CONFIG.vertices)[mask].astype(np.float32)
+            if len(key_points.xy)>0:
+                mask = (key_points.xy[0][:, 0] > 1) & (key_points.xy[0][:, 1] > 1)
+                source = key_points.xy[0][mask].astype(np.float32)
+                target = np.array(self.CONFIG.vertices)[mask].astype(np.float32)
+            else:
+                source = np.array([])
+                target = np.array([])
             transform = False
+
+            # Check if we have enough points to transform
             if source.shape[0] >= 4:
                 transform = True
                 transformer = ViewTransformer(
@@ -114,6 +147,7 @@ class Tracker:
                 cls_id = frame_detection[3]
                 track_id = frame_detection[4]
 
+                # Add player to tracks
                 if cls_id == cls_names_inv["Player"]:
                     tracks["players"][frame_num][track_id] = {"bbox": bbox}
 
@@ -124,6 +158,7 @@ class Tracker:
                     else:
                         tracks["players"][frame_num][track_id]["position_transformed"] = np.array([])
 
+                # Add referee to tracks
                 if cls_id == cls_names_inv["Referee"]:
                     tracks["referees"][frame_num][track_id] = {"bbox": bbox}
                     
@@ -138,6 +173,7 @@ class Tracker:
                 bbox = frame_detection[0]
                 cls_id = frame_detection[3]
 
+                # Add ball to tracks
                 if cls_id == cls_names_inv["Ball"]:
                     tracks["ball"][frame_num][1] = {"bbox": bbox}
 
@@ -160,6 +196,7 @@ class Tracker:
         # Interpolate ball positions
         tracks["ball"] = self.interpolate_ball_positions(tracks["ball"])
 
+        # Get rid of ball tracks that are too far apart
         last_position = None
         for f, ball_track in enumerate(tracks["ball"]):
             position = get_bbox_center(ball_track[1].get("bbox", []))
@@ -177,20 +214,31 @@ class Tracker:
         # Remove short tracks
         player_tracks = player_tracks_by_ids(tracks)
         player_tracks = remove_short_tracks(player_tracks, 20)
-        tracks["players"] = player_tracks_by_frames(player_tracks)
+        tracks["players"] = player_tracks_by_frames(player_tracks, num_frames)
 
+        # Store tracks to pickle
         if path is not None:
             with open(path,'wb') as f:
                 pickle.dump(tracks, f)
         
         return tracks
 
-    def detect_frames(self, frames):
-        for frame in frames:
-            yield self.model(frame,conf=0.1)
+    def draw_annotations(self, frames: Generator[np.ndarray, None, None], tracks: dict, team_possession: list, 
+                         pitch_frames: Generator[np.ndarray, None, None]) -> Generator[np.ndarray, None, None]:
+        """Draws annotations on the video frames.
+        This function draws the players, referees, ball and team possession on the video frames.
 
-    def draw_annotations(self, frames, tracks, team_possession, pitch_frames):
+        Args:
+            frames (Generator[np.ndarray]): Video frames
+            tracks (dict): player, referee, ball tracks
+            team_possession (list): Team possession list (0 for team 1, 1 for team 2)
+            pitch_frames (Generator[np.ndarray]): 2D pitch frames
+
+        Yields:
+            Generator[np.ndarray]: Annotated video frames
+        """
         for frame_num, f in enumerate(frames):
+            # Overlay pitch on video frame
             frame = f.copy()
             pitch_frame = next(pitch_frames)
             x_offset = frame.shape[1]//2 - pitch_frame.shape[1]//2
@@ -225,7 +273,18 @@ class Tracker:
             yield frame
         
     
-    def draw_team_possession(self, frame, frame_num, team_possession):
+    def draw_team_possession(self, frame: np.ndarray, frame_num: int, team_possession: list) -> np.ndarray:
+        """Draws team possession on the video frame.
+        This function calculates the possession percentage for each team and draws it on the video frame.
+
+        Args:
+            frame (np.ndarray): The current video frame
+            frame_num (int): The current frame number
+            team_possession (list): List of team possession values (0 for team 1, 1 for team 2)
+
+        Returns:
+            np.ndarray: The video frame with team possession drawn on it
+        """
         overlay = frame.copy()
 
         cv2.rectangle(overlay, (1350,850), (1900,970), (255,255,255), cv2.FILLED)
@@ -244,7 +303,18 @@ class Tracker:
         return frame
         
     
-    def draw_triangle(self, frame, bbox, colour):
+    def draw_triangle(self, frame: np.ndarray, bbox: list, colour: tuple[int, int, int]) -> np.ndarray:
+        """Helper function to draw a triangle on the video frame.
+        This function is used to draw the ball and player possession indicators.
+
+        Args:
+            frame (np.ndarray): The current video frame
+            bbox (list): The bounding box of the object
+            colour (tuple[int, int, int]): Colour of the triangle (BGR format)
+
+        Returns:
+            np.ndarray: Annotated video frame with triangle drawn on it
+        """
         y = int(bbox[1])
         x,_ = get_bbox_center(bbox)
 
@@ -258,7 +328,19 @@ class Tracker:
 
         return frame
 
-    def draw_elipse(self, frame, bbox, colour, track_id=None):
+    def draw_elipse(self, frame: np.ndarray, bbox: list, colour: tuple[int, int, int], track_id:int=None) -> np.ndarray:
+        """Helper function to draw an ellipse on the video frame.
+        This function is used to draw the players and referees on the video frame.
+
+        Args:
+            frame (np.ndarray): Current video frame
+            bbox (list): Bounding box of the object
+            colour (tuple[int, int, int]): Colour of the ellipse (BGR format)
+            track_id (int, optional): The track ID of the player. Defaults to None.
+
+        Returns:
+            np.ndarray: Annotated video frame with ellipse drawn on it
+        """
         y2 = int(bbox[3])
 
         xc, _ = get_bbox_center(bbox)

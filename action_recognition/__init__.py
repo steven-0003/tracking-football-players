@@ -1,1 +1,1 @@
-from .model import load_model, get_video_frames, pred_to_label
+from .model import load_model, get_video_frames, pred_to_label, VideoClassifier

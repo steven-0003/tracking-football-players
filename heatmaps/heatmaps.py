@@ -10,9 +10,16 @@ import pathlib
 import sys
 sys.path.append('../')
 
-from utils import player_tracks_by_ids, remove_short_tracks, get_transformed
+from utils import player_tracks_by_ids, get_transformed
 
-def generate_heatmaps(video_name, tracks):
+def generate_heatmaps(video_name: str, tracks: dict) -> None:
+    """Generate heatmaps for player tracks.
+    This function generates heatmaps for each player track in the provided dictionary of tracks.
+
+    Args:
+        video_name (str): The name of the video file (without extension) to save the heatmaps.
+        tracks (dict): A dictionary containing player tracks, where keys are player IDs and values are track data.
+    """
 
     player_tracks = player_tracks_by_ids(tracks)
 
@@ -21,8 +28,8 @@ def generate_heatmaps(video_name, tracks):
     for id, track in tqdm(player_tracks.items(), desc="Generating heatmaps"):
         positions = get_transformed(track)
 
-        x = np.array([pos[0] for pos in positions])
-        y = np.array([pos[1] for pos in positions])
+        x = np.array([pos[0] for pos in positions if len(pos)>0])
+        y = np.array([pos[1] for pos in positions if len(pos)>0])
 
         x = (x*0.1)+50
         y = (y*0.1)+50
