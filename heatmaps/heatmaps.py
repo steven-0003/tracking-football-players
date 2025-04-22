@@ -34,6 +34,11 @@ def generate_heatmaps(video_name: str, tracks: dict) -> None:
         x = (x*0.1)+50
         y = (y*0.1)+50
 
+
+        # Ensure there are enough points to create a heatmap
+        if len(x) < 2 or len(y) < 2:
+            continue
+
         k = gaussian_kde(np.vstack([x, y]))
         xi, yi = np.mgrid[0:1300:x.size**0.5*1j,0:800:y.size**0.5*1j]
         zi = k(np.vstack([xi.flatten(), yi.flatten()]))
