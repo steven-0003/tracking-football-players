@@ -47,9 +47,14 @@ def generate_heatmaps(video_name: str, tracks: dict) -> None:
         ax1 = fig.add_subplot(211)
         ax2 = fig.add_subplot(212)
 
+        
+        zi = zi.reshape(xi.shape)
+        if zi.shape[0] <2 or zi.shape[1] < 2:
+            continue
+
         # alpha=0.5 will make the plots semitransparent
-        ax1.pcolormesh(xi, yi, zi.reshape(xi.shape), alpha=0.5)
-        ax2.contourf(xi, yi, zi.reshape(xi.shape), alpha=0.5)
+        ax1.pcolormesh(xi, yi, zi, alpha=0.5)
+        ax2.contourf(xi, yi, zi, alpha=0.5)
 
         h,w,_ = frame.shape
 

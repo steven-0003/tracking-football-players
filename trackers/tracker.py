@@ -23,7 +23,8 @@ class Tracker:
         self.model = YOLO(path)
         self.keypoints = YOLO(keypoint_path)
         self.CONFIG = SoccerPitchConfiguration()
-        self.tracker = sv.ByteTrack(lost_track_buffer=1000, track_activation_threshold=0.5, frame_rate=fps)
+        self.tracker = sv.ByteTrack(lost_track_buffer=1000, track_activation_threshold=0.7, minimum_matching_threshold=0.95, frame_rate=fps,
+                                    minimum_consecutive_frames=3)
         self.team_assigner = TeamAssigner()
         self.player_assigner = PlayerBallAssigner()
 
@@ -43,36 +44,6 @@ class Tracker:
                     else:
                         position = get_foot_position(bbox)
                     tracks[object][frame_num][track_id]['position'] = position
-
-    def interpolate_ball_positions(self, positions: list) -> list:
-        """Interpolate ball positions to fill in missing values.
-
-        Args:
-            positions (list): list of ball positions
-
-        Returns:
-            list: interpolated ball positions
-        """
-        ball_positions = [x.get(1,{}).get('bbox',[]) for x in positions]
-        ball_positions_df = pd.DataFrame(ball_positions,columns=['x1','y1','x2','y2'])
-
-        transformed_positions = [x.get(1,{}).get('position_transformed',[]) for x in positions]
-        transformed_positions_df = pd.DataFrame(transformed_positions,columns=['x','y'])
-
-        # Interpolate missing values
-        ball_positions_df = ball_positions_df.interpolate()
-        ball_positions_df = ball_positions_df.bfill()
-
-        transformed_positions_df = transformed_positions_df.interpolate()
-        transformed_positions_df = transformed_positions_df.bfill()
-
-        ball_positions = [{1: {"bbox": x}} for x in ball_positions_df.to_numpy().tolist()]
-
-        transformed_list = transformed_positions_df.to_numpy().tolist()
-        for i in range(len(ball_positions)):
-            ball_positions[i][1]["position_transformed"] = transformed_list[i]
-
-        return ball_positions
 
     def get_object_tracks(self, frames: Generator[np.ndarray, None, None], num_frames: int, read:bool=False, path:str=None) -> dict:
         """Get object tracks from video frames.
@@ -99,7 +70,7 @@ class Tracker:
             "ball": []
         }
 
-        last_position = None
+        team_assigned = False
         
         for frame_num, frame in enumerate(tqdm(frames, desc="Running KeyPoint & Player Detection Model", total=num_frames)):
             # Run player detection and keypoint detection models
@@ -185,35 +156,19 @@ class Tracker:
                         tracks["ball"][frame_num][1]["position_transformed"] = np.array([])
             
             # Team classification
-            if frame_num == 0:
-                self.team_assigner.assign_team_colour(frame, tracks["players"][0])
+            if len(tracks["players"][frame_num]) >= 2 and not team_assigned:
+                self.team_assigner.assign_team_colour(frame, tracks["players"][frame_num])
+                team_assigned = True
             
-            for player_id, track in tracks["players"][frame_num].items():
-                team = self.team_assigner.get_player_team(frame, track['bbox'], player_id)
-                tracks['players'][frame_num][player_id]['team'] = team
-                tracks['players'][frame_num][player_id]['team_colour'] = self.team_assigner.team_colours[team]
-
-        # Interpolate ball positions
-        tracks["ball"] = self.interpolate_ball_positions(tracks["ball"])
-
-        # Get rid of ball tracks that are too far apart
-        last_position = None
-        for f, ball_track in enumerate(tracks["ball"]):
-            position = get_bbox_center(ball_track[1].get("bbox", []))
-
-            if last_position is None:
-                last_position = np.array(position)
-            else:
-                distance = np.linalg.norm(np.array(position) - last_position)
-                if distance > 100:
-                    tracks["ball"][f][1] = {}
-                last_position = position
-
-        tracks["ball"] = self.interpolate_ball_positions(tracks["ball"])
+            if team_assigned:
+                for player_id, track in tracks["players"][frame_num].items():
+                    team = self.team_assigner.get_player_team(frame, track['bbox'], player_id)
+                    tracks['players'][frame_num][player_id]['team'] = team
+                    tracks['players'][frame_num][player_id]['team_colour'] = self.team_assigner.team_colours[team]
 
         # Remove short tracks
         player_tracks = player_tracks_by_ids(tracks)
-        player_tracks = remove_short_tracks(player_tracks, 20)
+        player_tracks = remove_short_tracks(player_tracks, 25)
         tracks["players"] = player_tracks_by_frames(player_tracks, num_frames)
 
         # Store tracks to pickle
@@ -265,6 +220,8 @@ class Tracker:
 
             # Draw ball
             for _, ball in ball_dict.items():
+                if ball.get("bbox",None) is None:
+                    continue
                 frame = self.draw_triangle(frame, ball["bbox"],(0,255,0))
                 
             # Draw team possession

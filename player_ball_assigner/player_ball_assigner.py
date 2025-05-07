@@ -6,7 +6,7 @@ from utils import get_bbox_center, measure_distance
 
 class PlayerBallAssigner:
     def __init__(self) -> None:
-        self.max_player_ball_distance = 70
+        self.max_player_ball_distance = 25
     
     def assign_ball_to_player(self, players: dict, ball_bbox: list) -> int:
         """Assigns the ball to the closest player within a certain distance.

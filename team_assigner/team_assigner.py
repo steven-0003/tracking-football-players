@@ -20,7 +20,7 @@ class TeamAssigner:
             colour = self.get_player_colour(frame, bb)
             player_colours.append(colour)
 
-        kmeans = KMeans(n_clusters=2, init="k-means++", n_init=10)
+        kmeans = KMeans(n_clusters=2, init="k-means++", n_init=10, random_state=42)
         kmeans.fit(player_colours)
 
         self.kmeans = kmeans
@@ -68,7 +68,7 @@ class TeamAssigner:
         """
         img_2d = img.reshape(-1,3)
 
-        kmeans = KMeans(n_clusters=2, init="k-means++", n_init=1)
+        kmeans = KMeans(n_clusters=2, init="k-means++", n_init=1, random_state=42)
         kmeans.fit(img_2d)
 
         return kmeans
