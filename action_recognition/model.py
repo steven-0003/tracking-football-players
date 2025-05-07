@@ -59,7 +59,7 @@ def frames_from_video_file(video_path: str, n_frames: int, output_size: tuple[in
     if need_length > video_length:
         start = 0
     else:
-        max_start = video_length - need_length
+        max_start = int(video_length - need_length)
         start = random.randint(0, max_start + 1)
 
     src.set(cv2.CAP_PROP_POS_FRAMES, start)
