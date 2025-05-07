@@ -29,6 +29,20 @@ py -3.11 -m venv .venv
 pip install -r requirements.txt
 ```
 
+Tkinter is also required for the GUI which needs to be manually installed if you are using linux or mac.
+
+### Linux (Ubuntu) 
+```console
+sudo apt-get install python3-tk
+```
+
+### Mac
+
+```console
+brew install python-tk
+```
+
+## Download and extract saved models
 Navigate to the root folder and extract the [model zip](https://livemanchesterac-my.sharepoint.com/:u:/g/personal/steven_moussa_student_manchester_ac_uk/ETl8K3SJW9lMggHoPcMxe5gBKj3CyPyDf-0hrl7bt57VBQ?e=lRMoRv).
 
 The directory should be as follows
@@ -46,7 +60,7 @@ root
 ...
 ```
 
-*Optional*
+## *Optional*
 
 If you have a CUDA capable machine, you can install torch with CUDA for faster inference. 
 More information on installing torch can be found on the [pytorch page](https://pytorch.org/get-started/locally/)
