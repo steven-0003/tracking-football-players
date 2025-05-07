@@ -29,7 +29,7 @@ py -3.11 -m venv .venv
 pip install -r requirements.txt
 ```
 
-Navigate to the root folder and extract the [model zip](https://livemanchesterac-my.sharepoint.com/:u:/g/personal/steven_moussa_student_manchester_ac_uk/EVapoG_iv3hIgerOc0eCNEcB0v4tB3k_FSd8jj0BfM6slA?e=njVZb3).
+Navigate to the root folder and extract the [model zip](https://livemanchesterac-my.sharepoint.com/:u:/g/personal/steven_moussa_student_manchester_ac_uk/ETl8K3SJW9lMggHoPcMxe5gBKj3CyPyDf-0hrl7bt57VBQ?e=lRMoRv).
 
 The directory should be as follows
 
