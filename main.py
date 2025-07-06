@@ -2,7 +2,12 @@ from utils import save_video
 from trackers import Tracker
 from player_ball_assigner import PlayerBallAssigner
 from keypoints import KeypointDetector
-from action_recognition import load_model, get_video_frames, pred_to_label, VideoClassifier
+from action_recognition import (get_slowfast_video_frames, 
+                                load_slowfast_model, 
+                                slowfast_pred_to_label,
+                                get_hiera_video_frames, 
+                                load_hiera_model, 
+                                hiera_pred_to_label)
 from heatmaps import generate_heatmaps
 
 import numpy as np
@@ -69,14 +74,48 @@ def action_recognition(filename):
         showinfo(title="Error", message="File does not exist.")
         return
 
-    model = load_model('models/action/best.pt')
+    for widget in root.winfo_children():
+        widget.pack_forget()
+
+    slowfast_button = tk.Button(root, text="Run SlowFast", command=lambda: run_slowfast(filename))
+    slowfast_button.pack(pady=20)
+
+    hiera_button = tk.Button(root, text="Run Hiera", command=lambda: run_hiera(filename))
+    hiera_button.pack(pady=20)
+
+    back_button = tk.Button(root, text="Back", command=lambda: action_back(filename))
+    back_button.pack(pady=20)
+
+def action_back(filename):
+    for widget in root.winfo_children():
+        widget.pack_forget()
+
+    open_button = tk.Button(root, text="Open Video File", command=select_file)
+    open_button.pack(pady=20)
+
+    run_button = tk.Button(root, text="Run Analysis", command=lambda: main(filename))
+    run_button.pack(pady=20)
+
+    action_recognition_button = tk.Button(root, text="Run Action Recognition", command=lambda: action_recognition(filename))
+    action_recognition_button.pack(pady=20)
+
+def run_slowfast(filename):
+    model = load_slowfast_model('models/action/slowfast_r101_multisports.pt')
     with torch.no_grad():
         model.eval()
-        slowfast_frames  = get_video_frames(filename)
+        slowfast_frames  = get_slowfast_video_frames(filename)
         predicted = model(slowfast_frames)
-        action = pred_to_label(predicted)
+        action = slowfast_pred_to_label(predicted)
     showinfo(title="Action Recognition", message=f"Predicted action: {action}")
 
+def run_hiera(filename):
+    model = load_hiera_model('models/action/hiera_base_plus_16x224_multisports.pt')
+    with torch.no_grad():
+        model.eval()
+        hiera_frames = get_hiera_video_frames(filename)
+        predicted = model(hiera_frames)
+        action = hiera_pred_to_label(predicted)
+    showinfo(title="Action Recognition", message=f"Predicted action: {action}")
 
 def select_file():
     filetypes = (

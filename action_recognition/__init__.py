@@ -1,1 +1,2 @@
-from .model import load_model, get_video_frames, pred_to_label, VideoClassifier
+from .slowfast import SlowfastVideoClassifier, get_slowfast_video_frames, load_slowfast_model, slowfast_pred_to_label
+from .hiera import HieraVideoClassifier, get_hiera_video_frames, load_hiera_model, hiera_pred_to_label
