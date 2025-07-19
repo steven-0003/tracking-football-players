@@ -27,6 +27,7 @@ class Tracker:
                                     minimum_consecutive_frames=3)
         self.team_assigner = TeamAssigner()
         self.player_assigner = PlayerBallAssigner()
+        self.crops = []
 
     def add_position_to_tracks(self, tracks: dict):
         """Add (x,y) position to each track in the tracks dictionary.
@@ -69,8 +70,6 @@ class Tracker:
             "referees": [],
             "ball": []
         }
-
-        team_assigned = False
         
         for frame_num, frame in enumerate(tqdm(frames, desc="Running KeyPoint & Player Detection Model", total=num_frames)):
             # Run player detection and keypoint detection models
@@ -155,16 +154,9 @@ class Tracker:
                     else:
                         tracks["ball"][frame_num][1]["position_transformed"] = np.array([])
             
-            # Team classification
-            if len(tracks["players"][frame_num]) >= 2 and not team_assigned:
-                self.team_assigner.assign_team_colour(frame, tracks["players"][frame_num])
-                team_assigned = True
-            
-            if team_assigned:
-                for player_id, track in tracks["players"][frame_num].items():
-                    team = self.team_assigner.get_player_team(frame, track['bbox'], player_id)
-                    tracks['players'][frame_num][player_id]['team'] = team
-                    tracks['players'][frame_num][player_id]['team_colour'] = self.team_assigner.team_colours[team]
+            for player_id, track in tracks["players"][frame_num].items():
+                team = self.team_assigner.get_player_team(frame, track['bbox'], player_id)
+                tracks['players'][frame_num][player_id]['team'] = team
 
         # Remove short tracks
         player_tracks = player_tracks_by_ids(tracks)
@@ -177,6 +169,37 @@ class Tracker:
                 pickle.dump(tracks, f)
         
         return tracks
+    
+    def get_crops(self, frames: Generator[np.ndarray, None, None]) -> Generator[np.ndarray, None, None]:
+        """Get player crops from video frames.
+
+        Args:
+            frames (Generator[np.ndarray]): Video frames
+        
+        Yields:
+            Generator[np.ndarray]: Player crops
+        """
+        for frame in frames:
+            detection = self.model(frame, conf=0.1, verbose=False)
+            detection_supervision = sv.Detections.from_ultralytics(detection[0])
+            detection_supervision = detection_supervision.with_nms(threshold=0.5, class_agnostic=True)
+
+            cls_names = detection[0].names
+            cls_names_inv = {v:k for k,v in cls_names.items()}
+
+            players = detection_supervision[detection_supervision.class_id == cls_names_inv["Player"]]
+            players_crops = [sv.crop_image(frame, xyxy) for xyxy in players.xyxy]
+
+            for crop in players_crops:
+                yield crop
+
+    def fit_team_classifier(self, crops: list[np.ndarray]) -> None:
+        """Fit the team classifier model.
+
+        Args:
+            crops (list[np.ndarray]): List of player crops.
+        """
+        self.team_assigner.fit(crops)
 
     def draw_annotations(self, frames: Generator[np.ndarray, None, None], tracks: dict, team_possession: list, 
                          pitch_frames: Generator[np.ndarray, None, None]) -> Generator[np.ndarray, None, None]:
@@ -208,8 +231,10 @@ class Tracker:
 
             # Draw players
             for track_id, player in player_dict.items():
-                colour = player.get("team_colour", (0,0,255))
-                frame = self.draw_elipse(frame, player["bbox"],colour,track_id)
+                team = player.get("team", 0)
+                colour = {0: (255, 0, 0), 1: (0,0,255)}
+
+                frame = self.draw_elipse(frame, player["bbox"],colour[team],track_id)
 
                 if player.get('has_ball', False):
                     frame = self.draw_triangle(frame, player["bbox"], (0,0,255))

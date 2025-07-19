@@ -39,10 +39,15 @@ def main(filename):
     w, h = video_info.resolution_wh
     fps = video_info.fps
 
-    frames = sv.get_video_frames_generator(video_path)
+    frames = sv.get_video_frames_generator(video_path, stride=fps)
 
     # Initialise tracker
     tracker = Tracker('models/best.pt', 'models/keypoints/best.pt', fps)
+    crops = tracker.get_crops(frames)
+
+    tracker.fit_team_classifier(crops)
+
+    frames = sv.get_video_frames_generator(video_path)
     tracks = tracker.get_object_tracks(frames, num_frames, read=True, path=f'stubs/track_stubs_{video_name}.pkl')
 
     player_assigner = PlayerBallAssigner()

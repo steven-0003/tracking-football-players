@@ -1,78 +1,104 @@
 from sklearn.cluster import KMeans
 import numpy as np
+import supervision as sv
+
+import torch
+import umap
+from transformers import AutoProcessor, SiglipVisionModel
+
+from typing import Iterable, Generator, List, TypeVar
+
+V = TypeVar("V")
+
+MODEL_PATH = 'google/siglip2-base-patch16-224'
+
+def create_batches(
+    sequence: Iterable[V], batch_size: int
+) -> Generator[List[V], None, None]:
+    """
+    Generate batches from a sequence with a specified batch size.
+
+    Args:
+        sequence (Iterable[V]): The input sequence to be batched.
+        batch_size (int): The size of each batch.
+
+    Yields:
+        Generator[List[V], None, None]: A generator yielding batches of the input
+            sequence.
+    """
+    batch_size = max(batch_size, 1)
+    current_batch = []
+    for element in sequence:
+        if len(current_batch) == batch_size:
+            yield current_batch
+            current_batch = []
+        current_batch.append(element)
+    if current_batch:
+        yield current_batch
 
 class TeamAssigner:
-    def __init__(self) -> None:
-        self.team_colours = {}
+    def __init__(self, batch_size: int = 32):
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+        self.batch_size = batch_size
+        self.features_model = SiglipVisionModel.from_pretrained(MODEL_PATH, device_map=self.device)
+        self.processor = AutoProcessor.from_pretrained(MODEL_PATH, use_fast=False)
+        self.reducer = umap.UMAP(n_components=3, random_state=42, n_jobs=1)
+        self.kmeans = KMeans(n_clusters=2, random_state=42)
         self.player_team = {}
 
-    def assign_team_colour(self, frame: np.ndarray, player_detections: dict) -> None:
-        """Gets the two team colours from the player detections using KMeans clustering.
-
-        Args:
-            frame (np.ndarray): Frame to get the player colours from.
-            player_detections (dict): Player detections with bounding boxes.
+    def extract_features(self, crops: List[np.ndarray]) -> np.ndarray:
         """
-        player_colours = []
-
-        for _,detection in player_detections.items():
-            bb = detection['bbox']
-            colour = self.get_player_colour(frame, bb)
-            player_colours.append(colour)
-
-        kmeans = KMeans(n_clusters=2, init="k-means++", n_init=10, random_state=42)
-        kmeans.fit(player_colours)
-
-        self.kmeans = kmeans
-
-        self.team_colours[0] = kmeans.cluster_centers_[0]
-        self.team_colours[1] = kmeans.cluster_centers_[1]
-
-    def get_player_colour(self, frame: np.ndarray, bbox: list) -> np.ndarray:
-        """Gets the player colour from the frame using KMeans clustering.
+        Extract features from a list of image crops using the pre-trained
+            SiglipVisionModel.
 
         Args:
-            frame (np.ndarray): Frame to get the player colour from.
-            bbox (list): Bounding box of the player.
+            crops (List[np.ndarray]): List of image crops.
 
         Returns:
-            np.ndarray: The colour of the player.
+            np.ndarray: Extracted features as a numpy array.
         """
-        img = frame[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])]
+        crops = [sv.cv2_to_pillow(crop) for crop in crops]
+        batches = create_batches(crops, self.batch_size)
+        data = []
+        with torch.no_grad():
+            for batch in batches:
+                inputs = self.processor(
+                    images=batch, return_tensors="pt").to(self.device)
+                outputs = self.features_model(**inputs)
+                embeddings = torch.mean(outputs.last_hidden_state, dim=1).cpu().numpy()
+                data.append(embeddings)
 
-        # Take the top half of the image
-        top_half = img[0:int(img.shape[0]/2),:]
-
-        # Get clustering model
-        kmeans = self.get_clustering_model(top_half)
-
-        # Get cluster labels
-        labels = kmeans.labels_
-        clustered_img = labels.reshape(top_half.shape[0],top_half.shape[1])
-
-        # Get player cluster
-        corner_clusters = [clustered_img[0,0], clustered_img[0,-1], clustered_img[-1,0], clustered_img[-1,-1]]
-        non_player_cluster = max(set(corner_clusters), key=corner_clusters.count)
-        player_cluster = 1-non_player_cluster
-
-        return kmeans.cluster_centers_[player_cluster]
-
-    def get_clustering_model(self, img: np.ndarray) -> KMeans:
-        """Gets the clustering model for the image using KMeans clustering.
-
-        Args:
-            img (np.ndarray): Image to fit the clustering model to.
-
-        Returns:
-            KMeans: The fitted KMeans model.
-        """
-        img_2d = img.reshape(-1,3)
-
-        kmeans = KMeans(n_clusters=2, init="k-means++", n_init=1, random_state=42)
-        kmeans.fit(img_2d)
-
-        return kmeans
+        return np.concatenate(data)
     
+    def fit(self, crops: List[np.ndarray]) -> None:
+        """
+        Fit the classifier model on a list of image crops.
+
+        Args:
+            crops (List[np.ndarray]): List of image crops.
+        """
+        data = self.extract_features(crops)
+        projections = self.reducer.fit_transform(data)
+        self.kmeans.fit(projections)
+
+    def predict(self, crops: List[np.ndarray]) -> np.ndarray:
+        """
+        Predict the cluster labels for a list of image crops.
+
+        Args:
+            crops (List[np.ndarray]): List of image crops.
+
+        Returns:
+            np.ndarray: Predicted cluster labels.
+        """
+        if len(crops) == 0:
+            return np.array([])
+
+        data = self.extract_features(crops)
+        projections = self.reducer.transform(data)
+        return self.kmeans.predict(projections)
+
     def get_player_team(self, frame: np.ndarray, bbox: list, player_id: int) -> int:
         """Gets the player team from the frame using KMeans clustering.
 
@@ -86,10 +112,9 @@ class TeamAssigner:
         """
         if player_id in self.player_team:
             return self.player_team[player_id]
-        
-        player_colour = self.get_player_colour(frame, bbox)
-        team_id = self.kmeans.predict(player_colour.reshape(1,-1))[0]
 
-        self.player_team[player_id] = team_id
-        
-        return team_id
+        crop = [frame[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])]]
+        team = self.predict(crop)[0]
+
+        self.player_team[player_id] = team
+        return team
